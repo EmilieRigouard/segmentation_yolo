@@ -1,0 +1,20 @@
+# Environnement
+.env
+.venv/
+__pycache__/
+*.pyc
+
+# Données (trop lourdes pour git)
+dataset/
+dataset_split/
+dataset_tuiles/
+resultats/
+*.jpg
+*.png
+*.pt
+
+# YOLO runs
+runs/
+
+# uv
+.python-version
