@@ -12,6 +12,7 @@ import random
 import numpy as np
 import sys
 import time
+import os
 from datetime import datetime
 from pathlib import Path
 from ultralytics import YOLO
@@ -20,7 +21,6 @@ from dotenv import load_dotenv
 from multiprocessing import Pool, cpu_count
 import psutil
 import torch
-import os
 
 load_dotenv()
 
@@ -168,15 +168,22 @@ class PipelineYOLO:
 
     def _detect_device(self):
         """Détecte et retourne le device (GPU multi ou CPU)"""
+        print(f"\n=== DEBUG _detect_device ===")
+        print(f"  torch.cuda.is_available(): {torch.cuda.is_available()}")
+        print(f"  os.environ['CUDA_VISIBLE_DEVICES']: {os.environ.get('CUDA_VISIBLE_DEVICES', 'NOT SET')}")
+
         if torch.cuda.is_available():
             num_gpus = torch.cuda.device_count()
-            print(f"  → {num_gpus} GPU(s) visible(s) à PyTorch")
+            print(f"  torch.cuda.device_count(): {num_gpus}")
 
             # Retourner tous les GPUs visibles
             if num_gpus == 1:
-                return "0"
+                device = "0"
             else:
-                return ",".join(str(i) for i in range(num_gpus))
+                device = ",".join(str(i) for i in range(num_gpus))
+
+            print(f"  → Device retourné : {device}")
+            return device
         else:
             print(f"  → Pas de GPU, utilisation du CPU")
             return "cpu"
@@ -373,6 +380,10 @@ names: ["cuvette"]
         else:
             batch_size = 4
             print(f"  → Batch size : {batch_size} (CPU)")
+
+        print(f"\n=== DEBUG avant model.train() ===")
+        print(f"  self.device: {self.device}")
+        print(f"  batch_size: {batch_size}")
 
         model.train(
             data=str(self.YAML_PATH),
