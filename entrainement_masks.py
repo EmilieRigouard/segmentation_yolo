@@ -379,6 +379,10 @@ names: ["cuvette"]
             epochs=100,
             imgsz=1024,
             batch=batch_size,
+            device=self.device,  # GPU détecté automatiquement
+            workers=self.cpu_nb,
+            augment=True,
+            patience=30,
             degrees=180.0,
             flipud=0.5,
         )
