@@ -355,28 +355,34 @@ names: ["cuvette"]
         self.log_step("ÉTAPE 6 — Entraînement YOLO")
         model = YOLO("yolov8n-seg.pt")
 
-        # Déterminer le batch size optimal selon le GPU disponible
+        # Déterminer le batch size optimal selon la mémoire GPU disponible
         if torch.cuda.is_available():
             num_gpus = torch.cuda.device_count()
-            gpu_name = torch.cuda.get_device_name(0)
+            try:
+                gpu_name = torch.cuda.get_device_name(0)
+                gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
+                print(f"  GPU: {gpu_name}, Memory: {gpu_memory_gb:.1f} GB")
 
-            # Adapter le batch size à la GPU
-            if "A100" in gpu_name:
-                batch_size = 64  # A100 40GB → très puissant !
-            elif "A6000" in gpu_name or "RTX 6000" in gpu_name:
-                batch_size = 48
-            elif "V100" in gpu_name:
-                batch_size = 32
-            elif "A10" in gpu_name or "RTX 4090" in gpu_name:
-                batch_size = 32
-            elif "RTX 4080" in gpu_name:
-                batch_size = 16
-            elif "RTX 4070" in gpu_name or "RTX 3090" in gpu_name:
-                batch_size = 12
-            else:
-                batch_size = 8  # Par défaut : conservateur
+                # Adapter le batch size à la mémoire disponible
+                if gpu_memory_gb > 35:  # A100 40GB
+                    batch_size = 64
+                elif gpu_memory_gb > 20:  # A100 80GB ou A6000 48GB
+                    batch_size = 48
+                elif gpu_memory_gb > 15:  # V100 32GB ou A6000
+                    batch_size = 32
+                elif gpu_memory_gb > 10:  # A10 24GB, RTX 4090
+                    batch_size = 16
+                elif gpu_memory_gb > 6:   # RTX 4080 16GB, MIG partitions 6-8GB
+                    batch_size = 8
+                else:  # MIG 1g.5gb (5GB)
+                    batch_size = 4
+            except:
+                # Fallback sur le nom du GPU si les props ne marchent pas
+                gpu_name = "Unknown"
+                gpu_memory_gb = 0
+                batch_size = 8
 
-            print(f"  → Batch size : {batch_size} (optimisé pour {gpu_name})")
+            print(f"  → Batch size : {batch_size} (GPU avec {gpu_memory_gb:.1f}GB)")
         else:
             batch_size = 4
             print(f"  → Batch size : {batch_size} (CPU)")

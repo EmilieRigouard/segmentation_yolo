@@ -55,6 +55,7 @@ if torch.cuda.is_available():
     # donc on utilise une heuristique : plus de 40GB = A100-like
     try:
         gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
+        print(f"Memory GPU disponible : {gpu_memory_gb:.1f} GB")
         if gpu_memory_gb > 35:  # A100 40GB
             slice_height = 2048
             slice_width = 2048
@@ -65,6 +66,7 @@ if torch.cuda.is_available():
             overlap_ratio = 0.2
     except:
         # Fallback : utiliser les valeurs standard
+        print(f"Could not read GPU memory, using default slice parameters")
         slice_height = 1024
         slice_width = 1024
         overlap_ratio = 0.2
