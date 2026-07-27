@@ -4,14 +4,19 @@ Pipeline YOLO segmentation pour détection de cuvettes de dégazage
 Images drone haute résolution (5472x3648) → découpe en tuiles → entraînement
 """
 
+from socket import socket
+
 import cv2
 import shutil
 import random
 import numpy as np
+import sys
 from pathlib import Path
 from ultralytics import YOLO
 from ultralytics.data.converter import convert_coco
 from dotenv import load_dotenv
+from multiprocessing import Pool, cpu_count
+import psutil
 import os
 
 load_dotenv()
@@ -27,6 +32,66 @@ def glob_images(directory):
     return found
 
 
+def decoupe_tuile(img_path, labels_dir, output_dir, tile_size=1024, overlap=0.7):
+    """Traite une seule image pour la découpe en tuiles.
+
+    Fonction globale pour être picklable par multiprocessing.
+    Retourne le nombre de tuiles créées.
+    """
+    img_path = Path(img_path)
+    labels_dir = Path(labels_dir)
+    output_dir = Path(output_dir)
+
+    label_path = labels_dir / f"{img_path.stem}.txt"
+    if not label_path.exists():
+        return 0
+
+    img = cv2.imread(str(img_path))
+    if img is None:
+        return 0
+
+    h, w = img.shape[:2]
+
+    with open(label_path) as f:
+        annotations = f.readlines()
+
+    stride = int(tile_size * (1 - overlap))
+    total_tuiles = 0
+
+    for y in range(0, h - tile_size + 1, stride):
+        for x in range(0, w - tile_size + 1, stride):
+            tile = img[y:y+tile_size, x:x+tile_size]
+            tile_labels = []
+
+            for ann in annotations:
+                parts = ann.strip().split()
+                class_id = parts[0]
+                coords = np.array(list(map(float, parts[1:]))).reshape(-1, 2)
+                coords_px = coords * np.array([w, h])
+
+                in_tile = (
+                    (coords_px[:, 0] >= x) & (coords_px[:, 0] < x + tile_size) &
+                    (coords_px[:, 1] >= y) & (coords_px[:, 1] < y + tile_size)
+                )
+                if in_tile.sum() / len(in_tile) < 0.5:
+                    continue
+
+                coords_tile = coords_px - np.array([x, y])
+                coords_tile = np.clip(coords_tile, 0, tile_size)
+                coords_norm = coords_tile / tile_size
+                flat = coords_norm.flatten()
+                tile_labels.append(f"{class_id} " + " ".join(f"{v:.6f}" for v in flat))
+
+            if tile_labels:
+                name = f"{img_path.stem}_x{x}_y{y}"
+                cv2.imwrite(str(output_dir / "images" / f"{name}.jpg"), tile)
+                with open(output_dir / "labels" / f"{name}.txt", "w") as f:
+                    f.write("\n".join(tile_labels))
+                total_tuiles += 1
+
+    return total_tuiles
+
+
 class PipelineYOLO:
 
     # ═══════════════════════════════════════════════════════════════
@@ -39,6 +104,42 @@ class PipelineYOLO:
         self.SPLIT_DIR   = Path(os.getenv("SPLIT_DIR"))
         self.TUILES_DIR  = Path(os.getenv("TUILES_DIR"))
         self.YAML_PATH   = Path(os.getenv("YAML_PATH"))
+
+        # Vérifier que les chemins source existent
+        if not self.IMAGES_SRC.exists():
+            print(f"❌ ERREUR: IMAGES_SRC n'existe pas: {self.IMAGES_SRC}")
+            sys.exit(1)
+        if not self.JSON_DIR.exists():
+            print(f"❌ ERREUR: JSON_DIR n'existe pas: {self.JSON_DIR}")
+            sys.exit(1)
+
+        # Créer les répertoires de sortie s'ils n'existent pas
+        self.DATASET_DIR.mkdir(parents=True, exist_ok=True)
+        self.SPLIT_DIR.mkdir(parents=True, exist_ok=True)
+        self.TUILES_DIR.mkdir(parents=True, exist_ok=True)
+        self.YAML_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+        print(f"✓ IMAGES_SRC: {self.IMAGES_SRC}")
+        print(f"✓ JSON_DIR: {self.JSON_DIR}")
+        print(f"✓ DATASET_DIR: {self.DATASET_DIR}")
+        print(f"✓ SPLIT_DIR: {self.SPLIT_DIR}")
+        print(f"✓ TUILES_DIR: {self.TUILES_DIR}")
+        print(f"✓ YAML_PATH: {self.YAML_PATH}")
+
+
+        # Nb de CPU à utiliser
+        # Stella
+        if "ncpu" in socket.gethostname():
+            self.cpu_nb = len(psutil.Process().cpu_affinity())
+        # macseb
+        elif "mac" in socket.gethostname():
+            self.cpu_nb = cpu_count()
+        # Windows
+        else:
+            self.cpu_nb = cpu_count() - 1
+
+        print(f"Using {self.cpu_nb=} CPU")
+
 
     # ═══════════════════════════════════════════════════════════════
     # ÉTAPE 1 — Convertir JSON COCO → labels YOLO segmentation
@@ -125,52 +226,22 @@ class PipelineYOLO:
         (output_dir / "images").mkdir(parents=True, exist_ok=True)
         (output_dir / "labels").mkdir(parents=True, exist_ok=True)
 
-        stride = int(tile_size * (1 - overlap))
-        total_tuiles = 0
+        images = glob_images(images_dir)
+        labels_dir = Path(labels_dir)
 
-        for img_path in glob_images(images_dir):
-            label_path = Path(labels_dir) / (img_path.stem + ".txt")
-            if not label_path.exists():
-                continue
+        # Préparer les arguments pour chaque image
+        args = [
+            (img, labels_dir, output_dir, tile_size, overlap)
+            for img in images
+        ]
 
-            img = cv2.imread(str(img_path))
-            h, w = img.shape[:2]
+        # Traitement parallèle sur tous les CPU disponibles
+        with Pool(processes=self.cpu_nb) as pool:
+            results = pool.starmap(decoupe_tuile, args)
 
-            with open(label_path) as f:
-                annotations = f.readlines()
+        total_tuiles = sum(results)
+        print(f"Tuiles avec annotations ({output_dir.name}) : {total_tuiles}")
 
-            for y in range(0, h - tile_size + 1, stride):
-                for x in range(0, w - tile_size + 1, stride):
-                    tile = img[y:y+tile_size, x:x+tile_size]
-                    tile_labels = []
-
-                    for ann in annotations:
-                        parts = ann.strip().split()
-                        class_id = parts[0]
-                        coords = np.array(list(map(float, parts[1:]))).reshape(-1, 2)
-                        coords_px = coords * np.array([w, h])
-
-                        in_tile = (
-                            (coords_px[:, 0] >= x) & (coords_px[:, 0] < x + tile_size) &
-                            (coords_px[:, 1] >= y) & (coords_px[:, 1] < y + tile_size)
-                        )
-                        if in_tile.sum() / len(in_tile) < 0.5:
-                            continue
-
-                        coords_tile = coords_px - np.array([x, y])
-                        coords_tile = np.clip(coords_tile, 0, tile_size)
-                        coords_norm = coords_tile / tile_size
-                        flat = coords_norm.flatten()
-                        tile_labels.append(class_id + " " + " ".join(f"{v:.6f}" for v in flat))
-
-                    if tile_labels:
-                        name = f"{img_path.stem}_x{x}_y{y}"
-                        cv2.imwrite(str(output_dir / "images" / f"{name}.jpg"), tile)
-                        with open(output_dir / "labels" / f"{name}.txt", "w") as f:
-                            f.write("\n".join(tile_labels))
-                        total_tuiles += 1
-
-        print(f"Tuiles avec annotations ({Path(output_dir).name}) : {total_tuiles}")
 
     # ═══════════════════════════════════════════════════════════════
     # ÉTAPE 4 — Ajouter des backgrounds
@@ -223,7 +294,7 @@ names: ["cuvette"]
             imgsz=1024,
             batch=4,
             device="cpu",
-            workers=2,
+            workers=self.cpu_nb,
             augment=True,
             patience=30,
             degrees=180.0,

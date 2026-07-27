@@ -4,10 +4,14 @@ Inférence SAHI par lot — détection de cuvettes de dégazage
 Applique le modèle YOLO sur toutes les images d'un dossier
 """
 
+from multiprocessing import cpu_count, Pool
+from socket import socket
+
 from sahi import AutoDetectionModel
 from sahi.predict import get_sliced_prediction
 from pathlib import Path
 from dotenv import load_dotenv
+import psutil
 import cv2
 import os
 
@@ -22,6 +26,23 @@ RESULTATS   = Path(os.getenv("RESULTATS"))
 RESULTATS.mkdir(exist_ok=True)
 
 # ═══════════════════════════════════════════════════════════════
+# CPU
+# ═══════════════════════════════════════════════════════════════
+
+# Nb de CPU à utiliser
+# Stella
+if "ncpu" in socket.gethostname():
+    cpu_nb = len(psutil.Process().cpu_affinity())
+# macseb
+elif "mac" in socket.gethostname():
+    cpu_nb = cpu_count()
+# Windows
+else:
+    cpu_nb = cpu_count() - 1
+
+print(f"Using {cpu_nb=} CPU")
+
+# ═══════════════════════════════════════════════════════════════
 # CHARGEMENT DU MODÈLE
 # ═══════════════════════════════════════════════════════════════
 detection_model = AutoDetectionModel.from_pretrained(
@@ -31,14 +52,14 @@ detection_model = AutoDetectionModel.from_pretrained(
     device="cpu",
 )
 
-# ═══════════════════════════════════════════════════════════════
-# INFÉRENCE SUR TOUTES LES IMAGES DU DOSSIER
-# ═══════════════════════════════════════════════════════════════
-images = list(DOSSIER_IMG.glob("*.JPG")) + list(DOSSIER_IMG.glob("*.jpg"))
-print(f"Images trouvées : {len(images)}")
 
-for i, img_path in enumerate(images):
-    print(f"[{i+1}/{len(images)}] {img_path.name} ...", end=" ")
+# ═══════════════════════════════════════════════════════════════
+# FONCTION DE TRAITEMENT D'UNE IMAGE
+# ═══════════════════════════════════════════════════════════════
+def process_image(img_path, index, total_images):
+    """Traite une seule image et retourne le nombre de détections."""
+    print(f"[{index+1}/{total_images}] {img_path.name} ...", end=" ")
+
     result = get_sliced_prediction(
         str(img_path),
         detection_model,
@@ -62,6 +83,24 @@ for i, img_path in enumerate(images):
 
     output_path = RESULTATS / img_path.name
     cv2.imwrite(str(output_path), img)
-    print(f"{len(result.object_prediction_list)} détections")
+
+    nb_detections = len(result.object_prediction_list)
+    print(f"{nb_detections} détections")
+    return nb_detections
+
+
+# ═══════════════════════════════════════════════════════════════
+# INFÉRENCE SUR TOUTES LES IMAGES DU DOSSIER EN PARALLÈLE
+# ═══════════════════════════════════════════════════════════════
+images = list(DOSSIER_IMG.glob("*.JPG")) + list(DOSSIER_IMG.glob("*.jpg"))
+print(f"Images trouvées : {len(images)}")
+
+# Préparer les arguments pour chaque image
+args = [(img, i, len(images)) for i, img in enumerate(images)]
+
+# Traitement parallèle sur tous les CPU disponibles
+with Pool(processes=cpu_nb) as pool:
+    results = pool.starmap(process_image, args)
 
 print(f"\nTerminé ! Résultats sauvegardés dans : {RESULTATS}")
+print(f"Total détections : {sum(results)}")
