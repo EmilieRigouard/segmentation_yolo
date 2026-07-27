@@ -6,7 +6,8 @@
 #SBATCH --output=/gpfs/users/bonaime/logs/train-%j.txt
 #SBATCH --mail-user=bonaime@ipgp.fr
 #SBATCH --mail-type=END,FAIL
-#SBATCH --ntasks-per-node=32
+#SBATCH --ntasks-per-node=4
+
 
 echo "=== Job lancé sur $(hostname) ==="
 echo "Date : $(date)"
