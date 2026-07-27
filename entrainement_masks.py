@@ -17,6 +17,16 @@ import os
 load_dotenv()
 
 
+def glob_images(directory):
+    """Retourne les images d'un dossier, en gérant .jpg/.JPG/.jpeg/.JPEG."""
+    directory = Path(directory)
+    exts = ["*.jpg", "*.JPG", "*.jpeg", "*.JPEG"]
+    found = []
+    for ext in exts:
+        found.extend(directory.glob(ext))
+    return found
+
+
 class PipelineYOLO:
 
     # ═══════════════════════════════════════════════════════════════
@@ -34,6 +44,9 @@ class PipelineYOLO:
     # ÉTAPE 1 — Convertir JSON COCO → labels YOLO segmentation
     # ═══════════════════════════════════════════════════════════════
     def convert_coco(self):
+        if self.DATASET_DIR.exists():
+            shutil.rmtree(self.DATASET_DIR)
+
         convert_coco(
             labels_dir=str(self.JSON_DIR.parent),
             save_dir=str(self.DATASET_DIR),
@@ -51,7 +64,7 @@ class PipelineYOLO:
             (self.SPLIT_DIR / "images" / split).mkdir(parents=True, exist_ok=True)
             (self.SPLIT_DIR / "labels" / split).mkdir(parents=True, exist_ok=True)
 
-        all_images = [f for f in self.IMAGES_SRC.glob("*.jpg")
+        all_images = [f for f in glob_images(self.IMAGES_SRC)
                       if (LABELS_SRC / (f.stem + ".txt")).exists()]
 
         random.seed(42)
@@ -77,7 +90,13 @@ class PipelineYOLO:
     def print_diameter_stats(self):
         tailles = []
         for label_path in (self.SPLIT_DIR / "labels" / "train").glob("*.txt"):
-            img_path = self.IMAGES_SRC / (label_path.stem + ".jpg")
+            img_path = None
+            for candidate in glob_images(self.IMAGES_SRC):
+                if candidate.stem == label_path.stem:
+                    img_path = candidate
+                    break
+            if img_path is None:
+                continue
             img = cv2.imread(str(img_path))
             if img is None:
                 continue
@@ -109,7 +128,7 @@ class PipelineYOLO:
         stride = int(tile_size * (1 - overlap))
         total_tuiles = 0
 
-        for img_path in Path(images_dir).glob("*.jpg"):
+        for img_path in glob_images(images_dir):
             label_path = Path(labels_dir) / (img_path.stem + ".txt")
             if not label_path.exists():
                 continue
@@ -160,8 +179,8 @@ class PipelineYOLO:
         output_dir = Path(output_dir)
         tile_size = 1024
 
-        annotees = {f.stem for f in Path(images_annotees).glob("*.jpg")}
-        sans_cuvettes = [f for f in Path(images_src).glob("*.jpg") if f.stem not in annotees]
+        annotees = {f.stem for f in glob_images(images_annotees)}
+        sans_cuvettes = [f for f in glob_images(images_src) if f.stem not in annotees]
 
         random.seed(42)
         selection = random.sample(sans_cuvettes, min(n_backgrounds, len(sans_cuvettes)))
@@ -224,7 +243,7 @@ names: ["cuvette"]
         )[-1])
         print(f"\nModèle utilisé : {BEST_MODEL}")
 
-        TEST_IMAGE = str(list(self.IMAGES_SRC.glob("*.jpg"))[0])
+        TEST_IMAGE = str(glob_images(self.IMAGES_SRC)[0])
 
         detection_model = AutoDetectionModel.from_pretrained(
             model_type="ultralytics",
@@ -298,8 +317,8 @@ names: ["cuvette"]
         )
 
         print(f"\nDataset final :")
-        print(f"  Train : {len(list((self.TUILES_DIR / 'train' / 'images').glob('*.jpg')))} images")
-        print(f"  Val   : {len(list((self.TUILES_DIR / 'val'   / 'images').glob('*.jpg')))} images")
+        print(f"  Train : {len(glob_images(self.TUILES_DIR / 'train' / 'images'))} images")
+        print(f"  Val   : {len(glob_images(self.TUILES_DIR / 'val'   / 'images'))} images")
 
         # Étape 5
         self.create_yaml()
