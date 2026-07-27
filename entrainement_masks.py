@@ -4,7 +4,7 @@ Pipeline YOLO segmentation pour détection de cuvettes de dégazage
 Images drone haute résolution (5472x3648) → découpe en tuiles → entraînement
 """
 
-from socket import socket
+from socket import gethostname
 
 import cv2
 import shutil
@@ -134,10 +134,10 @@ class PipelineYOLO:
 
         # Nb de CPU à utiliser
         # Stella
-        if "ncpu" in socket.gethostname():
+        if "ncpu" in gethostname():
             self.cpu_nb = len(psutil.Process().cpu_affinity())
         # macseb
-        elif "mac" in socket.gethostname():
+        elif "mac" in gethostname():
             self.cpu_nb = cpu_count()
         # Windows
         else:
