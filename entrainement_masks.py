@@ -170,28 +170,13 @@ class PipelineYOLO:
         """Détecte et retourne le device (GPU multi ou CPU)"""
         if torch.cuda.is_available():
             num_gpus = torch.cuda.device_count()
-            # Vérifier chaque GPU de façon sécurisée
-            gpu_names = []
-            accessible_gpus = []
-            for i in range(num_gpus):
-                try:
-                    name = torch.cuda.get_device_name(i)
-                    gpu_names.append(name)
-                    accessible_gpus.append(i)
-                except RuntimeError:
-                    # GPU non accessible, le sauter
-                    pass
-
-            if accessible_gpus:
-                print(f"  → {len(accessible_gpus)} GPU(s) accessible(s) : {', '.join(gpu_names)}")
-                # Retourner les GPUs accessibles
-                if len(accessible_gpus) == 1:
-                    return str(accessible_gpus[0])
-                else:
-                    return ",".join(str(i) for i in accessible_gpus)
+            # Utiliser tous les GPUs disponibles sans vérifier les noms
+            # (certains GPUs peuvent ne pas être accessibles en détail)
+            print(f"  → {num_gpus} GPU(s) détecté(s)")
+            if num_gpus == 1:
+                return "0"
             else:
-                print(f"  → Pas de GPU accessible, utilisation du CPU")
-                return "cpu"
+                return ",".join(str(i) for i in range(num_gpus))
         else:
             print(f"  → Pas de GPU, utilisation du CPU")
             return "cpu"
