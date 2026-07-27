@@ -11,15 +11,26 @@ import shutil
 import random
 import numpy as np
 import sys
+import time
+from datetime import datetime
 from pathlib import Path
 from ultralytics import YOLO
 from ultralytics.data.converter import convert_coco
 from dotenv import load_dotenv
 from multiprocessing import Pool, cpu_count
 import psutil
+import torch
 import os
 
 load_dotenv()
+
+
+def format_elapsed_time(seconds):
+    """Formate le temps écoulé en h:mm:ss"""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    return f"{hours}h{minutes:02d}m{secs:02d}s"
 
 
 def glob_images(directory):
@@ -145,12 +156,29 @@ class PipelineYOLO:
 
         print(f"Using {self.cpu_nb=} CPU")
 
+        # Enregistrer le temps de démarrage
+        self.start_time = time.time()
+        print(f"\n{'='*60}")
+        print(f"Démarrage du pipeline à {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"{'='*60}")
+
+    def log_step(self, step_name):
+        """Affiche l'heure et le temps écoulé pour une étape"""
+        elapsed = time.time() - self.start_time
+        elapsed_str = format_elapsed_time(elapsed)
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        print(f"\n[{current_time}] [{elapsed_str}] {step_name}")
+
+    # ═══════════════════════════════════════════════════════════════
+        print(f"Démarrage du pipeline à {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"{'='*60}")
+
 
     # ═══════════════════════════════════════════════════════════════
     # ÉTAPE 1 — Convertir JSON COCO → labels YOLO segmentation
     # ═══════════════════════════════════════════════════════════════
     def convert_coco(self):
-        print("\nConversion JSON COCO → labels YOLO segmentation ...")
+        self.log_step("ÉTAPE 1 — Convertir JSON COCO → labels YOLO segmentation")
         if self.DATASET_DIR.exists():
             shutil.rmtree(self.DATASET_DIR)
 
@@ -165,7 +193,7 @@ class PipelineYOLO:
     # ÉTAPE 2 — Split train/val (80/20) → dans SPLIT_DIR
     # ═══════════════════════════════════════════════════════════════
     def split_dataset(self):
-        print("\nSplit train/val (80/20) ...")
+        self.log_step("ÉTAPE 2 — Split train/val (80/20)")
         LABELS_SRC = self.DATASET_DIR / "labels" / "Train"
 
         for split in ["train", "val"]:
@@ -196,7 +224,7 @@ class PipelineYOLO:
     # STATS DIAMÈTRES
     # ═══════════════════════════════════════════════════════════════
     def print_diameter_stats(self):
-        print("\nCalcul des stats diamètres ...")
+        self.log_step("STATS — Calcul des diamètres")
         tailles = []
         for label_path in (self.SPLIT_DIR / "labels" / "train").glob("*.txt"):
             img_path = None
@@ -230,7 +258,7 @@ class PipelineYOLO:
     # ÉTAPE 3 — Découpe en tuiles
     # ═══════════════════════════════════════════════════════════════
     def decoupe_tuiles(self, images_dir, labels_dir, output_dir, tile_size=1024, overlap=0.7):
-        print(f"\nDécoupe en tuiles ({output_dir.name}) ...")
+        self.log_step(f"ÉTAPE 3 — Découpe en tuiles ({Path(output_dir).name})")
         output_dir = Path(output_dir)
         (output_dir / "images").mkdir(parents=True, exist_ok=True)
         (output_dir / "labels").mkdir(parents=True, exist_ok=True)
@@ -256,7 +284,7 @@ class PipelineYOLO:
     # ÉTAPE 4 — Ajouter des backgrounds
     # ═══════════════════════════════════════════════════════════════
     def ajouter_backgrounds(self, images_src, images_annotees, output_dir, n_backgrounds=50):
-        print(f"\nAjout de backgrounds ({Path(output_dir).name}) ...")
+        self.log_step(f"ÉTAPE 4 — Ajouter des backgrounds ({Path(output_dir).name})")
         output_dir = Path(output_dir)
         tile_size = 1024
 
@@ -281,6 +309,7 @@ class PipelineYOLO:
     # ÉTAPE 5 — Créer le dataset.yaml
     # ═══════════════════════════════════════════════════════════════
     def create_yaml(self):
+        self.log_step("ÉTAPE 5 — Créer le dataset.yaml")
         yaml_content = f"""path: {self.TUILES_DIR.as_posix()}
 train: train/images
 val: val/images
@@ -297,13 +326,17 @@ names: ["cuvette"]
     # ÉTAPE 6 — Entraînement YOLO
     # ═══════════════════════════════════════════════════════════════
     def train(self):
+        self.log_step("ÉTAPE 6 — Entraînement YOLO")
         model = YOLO("yolov8n-seg.pt")
+        # device="0" = première GPU (auto-détection si GPU disponible)
+        # Utiliser "cpu" si pas de GPU disponible
+        device = "0" if torch.cuda.is_available() else "cpu"
         model.train(
             data=str(self.YAML_PATH),
             epochs=100,
             imgsz=1024,
             batch=4,
-            device="cpu",
+            device=device,
             workers=self.cpu_nb,
             augment=True,
             patience=30,
@@ -315,6 +348,7 @@ names: ["cuvette"]
     # ÉTAPE 7 — Inférence avec SAHI
     # ═══════════════════════════════════════════════════════════════
     def run_inference(self):
+        self.log_step("ÉTAPE 7 — Inférence avec SAHI")
         from sahi import AutoDetectionModel
         from sahi.predict import get_sliced_prediction
         from PIL import Image
@@ -409,6 +443,17 @@ names: ["cuvette"]
 
         # Étape 7
         self.run_inference()
+
+        # Rapport final
+        total_time = time.time() - self.start_time
+        total_time_str = format_elapsed_time(total_time)
+        end_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        print(f"\n{'='*60}")
+        print(f"Pipeline terminé avec succès !")
+        print(f"Date/heure de fin : {end_time}")
+        print(f"Durée totale : {total_time_str}")
+        print(f"{'='*60}\n")
 
 
 if __name__ == "__main__":
