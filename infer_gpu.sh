@@ -2,9 +2,10 @@
 #SBATCH --job-name=yolo-inference
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1
-#SBATCH --partition=ngpuashort,ngpualong
+#SBATCH --partition=ngpualong
+#SBATCH --mem=128G
+#SBATCH --exclude=ngpua001
 #SBATCH --time=04:00:00
-#SBATCH --mem=32G
 #SBATCH --output=/gpfs/users/bonaime/logs/inference-%j.txt
 #SBATCH --mail-user=bonaime@ipgp.fr
 #SBATCH --mail-type=END,FAIL

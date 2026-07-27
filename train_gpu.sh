@@ -2,7 +2,9 @@
 #SBATCH --job-name=yolo-train
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:4
-#SBATCH --partition=ngpuashort
+#SBATCH --partition=ngpualong
+#SBATCH --mem=512G
+#SBATCH --exclude=ngpua001
 #SBATCH --output=/gpfs/users/bonaime/logs/train-%j.txt
 #SBATCH --mail-user=bonaime@ipgp.fr
 #SBATCH --mail-type=END,FAIL
