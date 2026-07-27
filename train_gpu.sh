@@ -6,7 +6,7 @@
 #SBATCH --output=/gpfs/users/bonaime/logs/train-%j.txt
 #SBATCH --mail-user=bonaime@ipgp.fr
 #SBATCH --mail-type=END,FAIL
-#SBATCH --ntasks-per-node=2
+#SBATCH --ntasks-per-node=8
 
 
 cd /gpfs/scratch/bonaime/git/segmentation_yolo
@@ -35,8 +35,8 @@ echo "=== Réinstallation PyTorch avec CUDA ==="
 uv pip install --upgrade torch torchvision --index-url https://download.pytorch.org/whl/cu126 -q
 
 # Tester
-echo "=== Test PyTorch ==="
-.venv/bin/python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}'); print(f'GPUs: {torch.cuda.device_count()}')"
+#echo "=== Test PyTorch ==="
+#.venv/bin/python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}'); print(f'GPUs: {torch.cuda.device_count()}')"
 
 
 .venv/bin/python  entrainement_masks.py

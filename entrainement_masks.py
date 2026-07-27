@@ -356,6 +356,7 @@ names: ["cuvette"]
         model = YOLO("yolov8n-seg.pt")
 
         # Déterminer le batch size optimal selon la mémoire GPU disponible
+        use_fp16 = False
         if torch.cuda.is_available():
             num_gpus = torch.cuda.device_count()
             try:
@@ -364,59 +365,85 @@ names: ["cuvette"]
                 print(f"  GPU: {gpu_name}, Memory: {gpu_memory_gb:.1f} GB")
 
                 # Adapter le batch size à la mémoire disponible
+                # FP16 permet d'augmenter le batch de ~50-100%
                 if gpu_memory_gb > 35:  # A100 40GB
-                    batch_size = 64
+                    batch_size = 128  # 64 * 2 avec FP16
+                    use_fp16 = True
                 elif gpu_memory_gb > 20:  # A100 80GB ou A6000 48GB
-                    batch_size = 48
+                    batch_size = 96  # 48 * 2 avec FP16
+                    use_fp16 = True
                 elif gpu_memory_gb > 15:  # V100 32GB ou A6000
-                    batch_size = 32
+                    batch_size = 64  # 32 * 2 avec FP16
+                    use_fp16 = True
                 elif gpu_memory_gb > 10:  # A10 24GB, RTX 4090
-                    batch_size = 16
+                    batch_size = 32  # 16 * 2 avec FP16
+                    use_fp16 = True
                 elif gpu_memory_gb > 6:   # RTX 4080 16GB, MIG partitions 6-8GB
-                    batch_size = 8
+                    batch_size = 16
+                    use_fp16 = True
                 elif gpu_memory_gb > 5:   # MIG partitions 5-6GB
-                    batch_size = 2
+                    batch_size = 8
+                    use_fp16 = False  # Trop serré pour FP16
                 else:  # MIG 1g.5gb (5GB) - très serré
-                    batch_size = 1
+                    batch_size = 2
+                    use_fp16 = False
             except:
                 # Fallback sur le nom du GPU si les props ne marchent pas
                 gpu_name = "Unknown"
                 gpu_memory_gb = 0
-                batch_size = 8
+                batch_size = 16
+                use_fp16 = True
 
             print(f"  → Batch size : {batch_size} (GPU avec {gpu_memory_gb:.1f}GB)")
+            print(f"  → Mixed Precision (FP16) : {'✓ ACTIVÉ' if use_fp16 else '✗ Désactivé'}")
         else:
             batch_size = 4
+            use_fp16 = False
             print(f"  → Batch size : {batch_size} (CPU)")
 
-        print(f"\n=== DEBUG avant model.train() ===")
-        print(f"  self.device (initiale): {self.device}")
-        print(f"  batch_size: {batch_size}")
+        print(f"\n=== Configuration YOLO ===")
+        print(f"  Device initial: {self.device}")
+        print(f"  Batch size: {batch_size}")
+        print(f"  FP16: {use_fp16}")
 
         # Re-vérifier le nombre de GPUs au moment du train (peut changer en MIG)
         if torch.cuda.is_available():
             num_gpus_now = torch.cuda.device_count()
-            print(f"  torch.cuda.device_count() (au moment du train): {num_gpus_now}")
+            print(f"  GPUs disponibles: {num_gpus_now}")
             if num_gpus_now == 1:
                 device_to_use = "0"
             else:
                 device_to_use = ",".join(str(i) for i in range(num_gpus_now))
-            print(f"  → Device ajusté pour train: {device_to_use}")
+            print(f"  → Device pour train: {device_to_use}")
         else:
             device_to_use = "cpu"
-            print(f"  → Pas de GPU au moment du train, utilisation CPU")
+            print(f"  → CPU utilisé (pas de GPU disponible)")
 
+        # Paramètres GPU optimisés
         model.train(
             data=str(self.YAML_PATH),
             epochs=100,
             imgsz=1024,
             batch=batch_size,
-            device=device_to_use,  # Utiliser le device re-vérifié
-            workers=10,
+            device=device_to_use,
+            workers=self.cpu_nb,  # Utiliser tous les CPUs disponibles
+
+            # ===== OPTIMISATIONS GPU =====
+            half=use_fp16,           # Mixed Precision (FP16/FP32)
+            sync_bn=num_gpus_now > 1 if torch.cuda.is_available() else False,  # Batch Norm synchronisé multi-GPU
+
+            # ===== AUGMENTATION & RÉGULARISATION =====
             augment=True,
             patience=30,
             degrees=180.0,
             flipud=0.5,
+
+            # ===== OPTIMISATIONS SUPPLÉMENTAIRES =====
+            cache=True,              # Cache images en RAM (GPU si assez mémoire)
+            close_mosaic=10,         # Désactive mosaic 10 épochs avant la fin
+            amp=True,                # Automatic Mixed Precision
+            fraction=1.0,            # Utiliser 100% du dataset (évite sampling aléatoire)
+            save_period=5,           # Sauvegarde tous les 5 epochs
         )
 
     # ═══════════════════════════════════════════════════════════════

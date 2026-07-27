@@ -18,3 +18,4 @@ runs/
 
 # uv
 .python-version
+training/estran/dataset_tuiles.yaml
