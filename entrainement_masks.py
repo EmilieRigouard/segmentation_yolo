@@ -170,9 +170,9 @@ class PipelineYOLO:
         """Détecte et retourne le device (GPU multi ou CPU)"""
         if torch.cuda.is_available():
             num_gpus = torch.cuda.device_count()
-            # Utiliser tous les GPUs disponibles sans vérifier les noms
-            # (certains GPUs peuvent ne pas être accessibles en détail)
-            print(f"  → {num_gpus} GPU(s) détecté(s)")
+            print(f"  → {num_gpus} GPU(s) visible(s) à PyTorch")
+
+            # Retourner tous les GPUs visibles
             if num_gpus == 1:
                 return "0"
             else:
