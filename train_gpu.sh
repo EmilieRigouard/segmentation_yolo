@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=yolo-train
 #SBATCH --nodes=1
-#SBATCH --gres=gpu:4
-#SBATCH --partition=ngpualong
+#SBATCH --gres=gpu:1
+#SBATCH --partition=ngpualong,ngpuashort
 #SBATCH --output=/gpfs/users/bonaime/logs/train-%j.txt
 #SBATCH --mail-user=bonaime@ipgp.fr
 #SBATCH --mail-type=END,FAIL
-#SBATCH --ntasks-per-node=32
+#SBATCH --ntasks-per-node=2
 
 
 cd /gpfs/scratch/bonaime/git/segmentation_yolo

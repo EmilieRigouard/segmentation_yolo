@@ -412,7 +412,7 @@ names: ["cuvette"]
             imgsz=1024,
             batch=batch_size,
             device=device_to_use,  # Utiliser le device re-vérifié
-            workers=self.cpu_nb,
+            workers=10,
             augment=True,
             patience=30,
             degrees=180.0,
