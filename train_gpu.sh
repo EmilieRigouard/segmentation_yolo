@@ -3,11 +3,10 @@
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:4
 #SBATCH --partition=ngpuashort,ngpualong
-#SBATCH --time=24:00:00
-#SBATCH --mem=128G
 #SBATCH --output=/gpfs/users/bonaime/logs/train-%j.txt
 #SBATCH --mail-user=bonaime@ipgp.fr
 #SBATCH --mail-type=END,FAIL
+#SBATCH --ntasks-per-node=32
 
 echo "=== Job lancé sur $(hostname) ==="
 echo "Date : $(date)"
