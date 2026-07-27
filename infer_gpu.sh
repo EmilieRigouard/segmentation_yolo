@@ -16,6 +16,9 @@ echo "Date : $(date)"
 module purge
 module load cuda/12.6.2
 
+# Unset CUDA_VISIBLE_DEVICES pour laisser PyTorch voir seulement ce qui est réellement accessible
+unset CUDA_VISIBLE_DEVICES
+
 # Ajouter les librairies CUDA à LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$CUDA_HOME/targets/x86_64-linux/lib:$LD_LIBRARY_PATH
 

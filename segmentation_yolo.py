@@ -46,21 +46,25 @@ print(f"Using {cpu_nb=} CPU")
 # Déterminer le device (GPU ou CPU)
 if torch.cuda.is_available():
     num_gpus = torch.cuda.device_count()
-    gpu_names = [torch.cuda.get_device_name(i) for i in range(num_gpus)]
-    print(f"GPU(s) détecté(s) ({num_gpus}) : {', '.join(gpu_names)}")
+    print(f"GPU(s) détecté(s) : {num_gpus}")
     device = "0"  # SAHI utilise le GPU 0 pour l'inférence
-    gpu_name = gpu_names[0]
 
     # Adapter les paramètres d'inférence selon la GPU
-    if "A100" in gpu_name:
-        slice_height = 2048  # Plus gros slices avec A100 40GB
-        slice_width = 2048
-        overlap_ratio = 0.15  # Moins de redondance
-    elif "A6000" in gpu_name or "V100" in gpu_name:
-        slice_height = 1536
-        slice_width = 1536
-        overlap_ratio = 0.2
-    else:
+    # (sur cluster : A100 probable)
+    # Note : on peut pas lire le nom de la GPU de façon fiable sur cluster
+    # donc on utilise une heuristique : plus de 40GB = A100-like
+    try:
+        gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
+        if gpu_memory_gb > 35:  # A100 40GB
+            slice_height = 2048
+            slice_width = 2048
+            overlap_ratio = 0.15
+        else:
+            slice_height = 1024
+            slice_width = 1024
+            overlap_ratio = 0.2
+    except:
+        # Fallback : utiliser les valeurs standard
         slice_height = 1024
         slice_width = 1024
         overlap_ratio = 0.2
