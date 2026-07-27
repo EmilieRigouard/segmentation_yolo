@@ -2,11 +2,11 @@
 #SBATCH --job-name=yolo-train
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:4
-#SBATCH --partition ngpuashort,ngpualong
+#SBATCH --partition=ngpuashort,ngpualong
 #SBATCH --output=/gpfs/users/bonaime/logs/train-%j.txt
 #SBATCH --mail-user=bonaime@ipgp.fr
 #SBATCH --mail-type=END,FAIL
-#SBATCH --ntasks-per-node=4
+#SBATCH --ntasks-per-node=8
 
 
 echo "=== Job lancé sur $(hostname) ==="
