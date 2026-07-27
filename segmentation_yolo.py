@@ -5,8 +5,9 @@ Applique le modèle YOLO sur toutes les images d'un dossier
 """
 
 from multiprocessing import cpu_count, Pool
-from socket import socket
+from socket import gethostname
 
+import torch
 from sahi import AutoDetectionModel
 from sahi.predict import get_sliced_prediction
 from pathlib import Path
@@ -31,16 +32,29 @@ RESULTATS.mkdir(exist_ok=True)
 
 # Nb de CPU à utiliser
 # Stella
-if "ncpu" in socket.gethostname():
+if "ncpu" in gethostname():
     cpu_nb = len(psutil.Process().cpu_affinity())
 # macseb
-elif "mac" in socket.gethostname():
+elif "mac" in gethostname():
     cpu_nb = cpu_count()
 # Windows
 else:
     cpu_nb = cpu_count() - 1
 
 print(f"Using {cpu_nb=} CPU")
+
+# Déterminer le device (GPU ou CPU)
+if torch.cuda.is_available():
+    num_gpus = torch.cuda.device_count()
+    gpu_names = [torch.cuda.get_device_name(i) for i in range(num_gpus)]
+    print(f"GPU(s) détecté(s) ({num_gpus}) : {', '.join(gpu_names)}")
+    device = "0"  # SAHI utilise le GPU 0 pour l'inférence
+    # Réduire le parallélisme CPU quand on utilise GPU
+    cpu_nb = max(1, cpu_nb // 2)
+    print(f"Mode GPU : workers CPU réduits à {cpu_nb}")
+else:
+    print("Pas de GPU disponible, utilisation du CPU")
+    device = "cpu"
 
 # ═══════════════════════════════════════════════════════════════
 # CHARGEMENT DU MODÈLE
@@ -49,7 +63,7 @@ detection_model = AutoDetectionModel.from_pretrained(
     model_type="ultralytics",
     model_path=BEST_MODEL,
     confidence_threshold=0.3,
-    device="cpu",
+    device=device,
 )
 
 

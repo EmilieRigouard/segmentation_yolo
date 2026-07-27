@@ -156,11 +156,30 @@ class PipelineYOLO:
 
         print(f"Using {self.cpu_nb=} CPU")
 
+        # Déterminer le device GPU
+        self.device = self._detect_device()
+        print(f"Device pour entraînement : {self.device}")
+
         # Enregistrer le temps de démarrage
         self.start_time = time.time()
         print(f"\n{'='*60}")
         print(f"Démarrage du pipeline à {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"{'='*60}")
+
+    def _detect_device(self):
+        """Détecte et retourne le device (GPU multi ou CPU)"""
+        if torch.cuda.is_available():
+            num_gpus = torch.cuda.device_count()
+            gpu_names = [torch.cuda.get_device_name(i) for i in range(num_gpus)]
+            print(f"  → {num_gpus} GPU(s) détecté(s) : {', '.join(gpu_names)}")
+            # Retourner tous les GPUs : "0,1,2,3" ou juste "0" si un seul
+            if num_gpus == 1:
+                return "0"
+            else:
+                return ",".join(str(i) for i in range(num_gpus))
+        else:
+            print(f"  → Pas de GPU, utilisation du CPU")
+            return "cpu"
 
     def log_step(self, step_name):
         """Affiche l'heure et le temps écoulé pour une étape"""
@@ -328,15 +347,12 @@ names: ["cuvette"]
     def train(self):
         self.log_step("ÉTAPE 6 — Entraînement YOLO")
         model = YOLO("yolov8n-seg.pt")
-        # device="0" = première GPU (auto-détection si GPU disponible)
-        # Utiliser "cpu" si pas de GPU disponible
-        device = "0" if torch.cuda.is_available() else "cpu"
         model.train(
             data=str(self.YAML_PATH),
             epochs=100,
             imgsz=1024,
             batch=4,
-            device=device,
+            device=self.device,  # Utilise le device détecté (CPU ou GPU(s))
             workers=self.cpu_nb,
             augment=True,
             patience=30,
