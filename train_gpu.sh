@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=yolo-train
 #SBATCH --nodes=1
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:4
 #SBATCH --partition=ngpualong,ngpuashort
 #SBATCH --output=/gpfs/users/bonaime/logs/train-%j.txt
 #SBATCH --mail-user=bonaime@ipgp.fr
 #SBATCH --mail-type=END,FAIL
-#SBATCH --ntasks-per-node=8
+#SBATCH --ntasks-per-node=16
 
 
 cd /gpfs/scratch/bonaime/git/segmentation_yolo
@@ -27,16 +27,19 @@ unset CUDA_VISIBLE_DEVICES
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$CUDA_HOME/targets/x86_64-linux/lib:$LD_LIBRARY_PATH
 
 # Vérifier CUDA
-echo "=== Vérification CUDA ==="
-nvidia-smi --query-gpu=name --format=csv
+#echo "=== Vérification CUDA ==="
+#nvidia-smi --query-gpu=name --format=csv
 
 # IMPORTANT : Réinstaller PyTorch maintenant que CUDA est chargé
-echo "=== Réinstallation PyTorch avec CUDA ==="
-uv pip install --upgrade torch torchvision --index-url https://download.pytorch.org/whl/cu126 -q
+
+#echo "=== Réinstallation PyTorch avec CUDA ==="
+# A faire une fois pour s'assurer que PyTorch est bien lié à la version de CUDA chargée
+#uv pip install --upgrade torch torchvision --index-url https://download.pytorch.org/whl/cu126 -q
 
 # Tester
 #echo "=== Test PyTorch ==="
 #.venv/bin/python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}'); print(f'GPUs: {torch.cuda.device_count()}')"
 
+echo "=== Start Training==="
 
 .venv/bin/python  entrainement_masks.py

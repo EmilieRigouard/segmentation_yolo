@@ -355,96 +355,100 @@ names: ["cuvette"]
         self.log_step("ÉTAPE 6 — Entraînement YOLO")
         model = YOLO("yolov8n-seg.pt")
 
-        # Déterminer le batch size optimal selon la mémoire GPU disponible
+        # Initialiser les variables
+        gpu_memory_gb = 0
+        batch_size = 4
         use_fp16 = False
+        device_to_use = "cpu"
+
+        # Déterminer le batch size optimal selon la mémoire GPU disponible
         if torch.cuda.is_available():
-            num_gpus = torch.cuda.device_count()
             try:
+                num_gpus = torch.cuda.device_count()
                 gpu_name = torch.cuda.get_device_name(0)
                 gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
                 print(f"  GPU: {gpu_name}, Memory: {gpu_memory_gb:.1f} GB")
 
                 # Adapter le batch size à la mémoire disponible
-                # FP16 permet d'augmenter le batch de ~50-100%
                 if gpu_memory_gb > 35:  # A100 40GB
-                    batch_size = 128  # 64 * 2 avec FP16
+                    batch_size = 64
                     use_fp16 = True
                 elif gpu_memory_gb > 20:  # A100 80GB ou A6000 48GB
-                    batch_size = 96  # 48 * 2 avec FP16
+                    batch_size = 48
                     use_fp16 = True
                 elif gpu_memory_gb > 15:  # V100 32GB ou A6000
-                    batch_size = 64  # 32 * 2 avec FP16
+                    batch_size = 32
                     use_fp16 = True
                 elif gpu_memory_gb > 10:  # A10 24GB, RTX 4090
-                    batch_size = 32  # 16 * 2 avec FP16
-                    use_fp16 = True
-                elif gpu_memory_gb > 6:   # RTX 4080 16GB, MIG partitions 6-8GB
                     batch_size = 16
                     use_fp16 = True
-                elif gpu_memory_gb > 5:   # MIG partitions 5-6GB
+                elif gpu_memory_gb > 6:   # RTX 4080 16GB, MIG partitions 6-8GB
                     batch_size = 8
-                    use_fp16 = False  # Trop serré pour FP16
+                    use_fp16 = False
+                elif gpu_memory_gb > 5:   # MIG partitions 5-6GB (comme votre cas)
+                    batch_size = 1
+                    use_fp16 = False
                 else:  # MIG 1g.5gb (5GB) - très serré
                     batch_size = 2
                     use_fp16 = False
-            except:
-                # Fallback sur le nom du GPU si les props ne marchent pas
-                gpu_name = "Unknown"
+
+            except Exception as e:
+                print(f"⚠️ Erreur détection GPU: {e}")
+                print(f"  → Utilisation des valeurs par défaut")
                 gpu_memory_gb = 0
-                batch_size = 16
-                use_fp16 = True
+                batch_size = 4
+                use_fp16 = False
 
             print(f"  → Batch size : {batch_size} (GPU avec {gpu_memory_gb:.1f}GB)")
-            print(f"  → Mixed Precision (FP16) : {'✓ ACTIVÉ' if use_fp16 else '✗ Désactivé'}")
-        else:
-            batch_size = 4
-            use_fp16 = False
-            print(f"  → Batch size : {batch_size} (CPU)")
+            print(f"  → Mixed Precision : {'✗ Désactivé' if not use_fp16 else '✓ Activé'}")
 
-        print(f"\n=== Configuration YOLO ===")
-        print(f"  Device initial: {self.device}")
-        print(f"  Batch size: {batch_size}")
-        print(f"  FP16: {use_fp16}")
-
-        # Re-vérifier le nombre de GPUs au moment du train (peut changer en MIG)
-        if torch.cuda.is_available():
+            # Déterminer le device
             num_gpus_now = torch.cuda.device_count()
-            print(f"  GPUs disponibles: {num_gpus_now}")
             if num_gpus_now == 1:
                 device_to_use = "0"
             else:
                 device_to_use = ",".join(str(i) for i in range(num_gpus_now))
-            print(f"  → Device pour train: {device_to_use}")
+
         else:
+            batch_size = 2
             device_to_use = "cpu"
-            print(f"  → CPU utilisé (pas de GPU disponible)")
+            print(f"  → Batch size : {batch_size} (CPU)")
 
-        # Paramètres GPU optimisés
-        model.train(
-            data=str(self.YAML_PATH),
-            epochs=100,
-            imgsz=1024,
-            batch=batch_size,
-            device=device_to_use,
-            workers=self.cpu_nb,  # Utiliser tous les CPUs disponibles
+        print(f"\n=== Configuration YOLO ===")
+        print(f"  Mémoire GPU: {gpu_memory_gb:.1f} GB")
+        print(f"  Batch size: {batch_size}")
+        print(f"  Device: {device_to_use}")
 
-            # ===== OPTIMISATIONS GPU =====
-            half=use_fp16,           # Mixed Precision (FP16/FP32)
-            sync_bn=num_gpus_now > 1 if torch.cuda.is_available() else False,  # Batch Norm synchronisé multi-GPU
+        # Adapter les workers selon la mémoire disponible
+        # Mémoire très limitée: réduire workers
+        if gpu_memory_gb < 6:
+            workers_to_use = 0  # Pas de workers pour MIG serré
+            use_cache = False
+        else:
+            workers_to_use = 10
+            use_cache = True
 
-            # ===== AUGMENTATION & RÉGULARISATION =====
-            augment=True,
-            patience=30,
-            degrees=180.0,
-            flipud=0.5,
+        # Paramètres d'entraînement adaptés à la mémoire GPU
+        # MIG 5.1GB - imgsz=1024 OBLIGATOIRE
+        train_args = {
+            "data": str(self.YAML_PATH),
+            "epochs": 30,  # Réduit drastiquement pour compenser imgsz=1024
+            "imgsz": 1024,  # GARDER 1024
+            "batch": batch_size,
+            "device": device_to_use,
+            "workers": workers_to_use,
+            "augment": False,
+            "patience": 10,  # Très court: arrêt anticipé rapide
+            "close_mosaic": 3,
+            "fraction": 1.0,
+            "save_period": 5,
+            "cache": False,
+            "amp": True,  # Réactiver pour économiser mémoire
+            "plots": False,
+            "rect": True,  # Optimiser les dimensions de batch
+        }
 
-            # ===== OPTIMISATIONS SUPPLÉMENTAIRES =====
-            cache=True,              # Cache images en RAM (GPU si assez mémoire)
-            close_mosaic=10,         # Désactive mosaic 10 épochs avant la fin
-            amp=True,                # Automatic Mixed Precision
-            fraction=1.0,            # Utiliser 100% du dataset (évite sampling aléatoire)
-            save_period=5,           # Sauvegarde tous les 5 epochs
-        )
+        model.train(**train_args)
 
     # ═══════════════════════════════════════════════════════════════
     # ÉTAPE 7 — Inférence avec SAHI
@@ -505,7 +509,7 @@ names: ["cuvette"]
 
         # Étape 2
         self.split_dataset()
-        self.print_diameter_stats()
+        #self.print_diameter_stats()
 
         # Étape 3
         self.decoupe_tuiles(
