@@ -374,8 +374,10 @@ names: ["cuvette"]
                     batch_size = 16
                 elif gpu_memory_gb > 6:   # RTX 4080 16GB, MIG partitions 6-8GB
                     batch_size = 8
-                else:  # MIG 1g.5gb (5GB)
-                    batch_size = 4
+                elif gpu_memory_gb > 5:   # MIG partitions 5-6GB
+                    batch_size = 2
+                else:  # MIG 1g.5gb (5GB) - très serré
+                    batch_size = 1
             except:
                 # Fallback sur le nom du GPU si les props ne marchent pas
                 gpu_name = "Unknown"
