@@ -49,12 +49,33 @@ if torch.cuda.is_available():
     gpu_names = [torch.cuda.get_device_name(i) for i in range(num_gpus)]
     print(f"GPU(s) détecté(s) ({num_gpus}) : {', '.join(gpu_names)}")
     device = "0"  # SAHI utilise le GPU 0 pour l'inférence
-    # Réduire le parallélisme CPU quand on utilise GPU
+    gpu_name = gpu_names[0]
+
+    # Adapter les paramètres d'inférence selon la GPU
+    if "A100" in gpu_name:
+        slice_height = 2048  # Plus gros slices avec A100 40GB
+        slice_width = 2048
+        overlap_ratio = 0.15  # Moins de redondance
+    elif "A6000" in gpu_name or "V100" in gpu_name:
+        slice_height = 1536
+        slice_width = 1536
+        overlap_ratio = 0.2
+    else:
+        slice_height = 1024
+        slice_width = 1024
+        overlap_ratio = 0.2
+
+    print(f"Slices optimisées : {slice_height}x{slice_width}, overlap={overlap_ratio}")
+
+    # Réduire légèrement le parallélisme CPU quand on utilise GPU
     cpu_nb = max(1, cpu_nb // 2)
     print(f"Mode GPU : workers CPU réduits à {cpu_nb}")
 else:
     print("Pas de GPU disponible, utilisation du CPU")
     device = "cpu"
+    slice_height = 1024
+    slice_width = 1024
+    overlap_ratio = 0.2
 
 # ═══════════════════════════════════════════════════════════════
 # CHARGEMENT DU MODÈLE
@@ -70,17 +91,17 @@ detection_model = AutoDetectionModel.from_pretrained(
 # ═══════════════════════════════════════════════════════════════
 # FONCTION DE TRAITEMENT D'UNE IMAGE
 # ═══════════════════════════════════════════════════════════════
-def process_image(img_path, index, total_images):
+def process_image(img_path, index, total_images, slice_h, slice_w, overlap_r):
     """Traite une seule image et retourne le nombre de détections."""
     print(f"[{index+1}/{total_images}] {img_path.name} ...", end=" ")
 
     result = get_sliced_prediction(
         str(img_path),
         detection_model,
-        slice_height=1024,
-        slice_width=1024,
-        overlap_height_ratio=0.2,
-        overlap_width_ratio=0.2,
+        slice_height=slice_h,
+        slice_width=slice_w,
+        overlap_height_ratio=overlap_r,
+        overlap_width_ratio=overlap_r,
     )
 
     # Dessiner les cercles
@@ -110,7 +131,7 @@ images = list(DOSSIER_IMG.glob("*.JPG")) + list(DOSSIER_IMG.glob("*.jpg"))
 print(f"Images trouvées : {len(images)}")
 
 # Préparer les arguments pour chaque image
-args = [(img, i, len(images)) for i, img in enumerate(images)]
+args = [(img, i, len(images), slice_height, slice_width, overlap_ratio) for i, img in enumerate(images)]
 
 # Traitement parallèle sur tous les CPU disponibles
 with Pool(processes=cpu_nb) as pool:

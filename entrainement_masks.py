@@ -347,15 +347,38 @@ names: ["cuvette"]
     def train(self):
         self.log_step("ÉTAPE 6 — Entraînement YOLO")
         model = YOLO("yolov8n-seg.pt")
+
+        # Déterminer le batch size optimal selon le GPU disponible
+        if torch.cuda.is_available():
+            num_gpus = torch.cuda.device_count()
+            gpu_name = torch.cuda.get_device_name(0)
+
+            # Adapter le batch size à la GPU
+            if "A100" in gpu_name:
+                batch_size = 64  # A100 40GB → très puissant !
+            elif "A6000" in gpu_name or "RTX 6000" in gpu_name:
+                batch_size = 48
+            elif "V100" in gpu_name:
+                batch_size = 32
+            elif "A10" in gpu_name or "RTX 4090" in gpu_name:
+                batch_size = 32
+            elif "RTX 4080" in gpu_name:
+                batch_size = 16
+            elif "RTX 4070" in gpu_name or "RTX 3090" in gpu_name:
+                batch_size = 12
+            else:
+                batch_size = 8  # Par défaut : conservateur
+
+            print(f"  → Batch size : {batch_size} (optimisé pour {gpu_name})")
+        else:
+            batch_size = 4
+            print(f"  → Batch size : {batch_size} (CPU)")
+
         model.train(
             data=str(self.YAML_PATH),
             epochs=100,
             imgsz=1024,
-            batch=4,
-            device=self.device,  # Utilise le device détecté (CPU ou GPU(s))
-            workers=self.cpu_nb,
-            augment=True,
-            patience=30,
+            batch=batch_size,
             degrees=180.0,
             flipud=0.5,
         )
