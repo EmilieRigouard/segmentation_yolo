@@ -29,6 +29,11 @@ def glob_images(directory):
     found = []
     for ext in exts:
         found.extend(directory.glob(ext))
+
+    if not found:
+        print(f"⚠️ AVERTISSEMENT: Aucune image trouvée dans {directory}")
+        sys.exit(1)
+
     return found
 
 
@@ -145,6 +150,7 @@ class PipelineYOLO:
     # ÉTAPE 1 — Convertir JSON COCO → labels YOLO segmentation
     # ═══════════════════════════════════════════════════════════════
     def convert_coco(self):
+        print("\nConversion JSON COCO → labels YOLO segmentation ...")
         if self.DATASET_DIR.exists():
             shutil.rmtree(self.DATASET_DIR)
 
@@ -159,6 +165,7 @@ class PipelineYOLO:
     # ÉTAPE 2 — Split train/val (80/20) → dans SPLIT_DIR
     # ═══════════════════════════════════════════════════════════════
     def split_dataset(self):
+        print("\nSplit train/val (80/20) ...")
         LABELS_SRC = self.DATASET_DIR / "labels" / "Train"
 
         for split in ["train", "val"]:
@@ -189,6 +196,7 @@ class PipelineYOLO:
     # STATS DIAMÈTRES
     # ═══════════════════════════════════════════════════════════════
     def print_diameter_stats(self):
+        print("\nCalcul des stats diamètres ...")
         tailles = []
         for label_path in (self.SPLIT_DIR / "labels" / "train").glob("*.txt"):
             img_path = None
@@ -222,6 +230,7 @@ class PipelineYOLO:
     # ÉTAPE 3 — Découpe en tuiles
     # ═══════════════════════════════════════════════════════════════
     def decoupe_tuiles(self, images_dir, labels_dir, output_dir, tile_size=1024, overlap=0.7):
+        print(f"\nDécoupe en tuiles ({output_dir.name}) ...")
         output_dir = Path(output_dir)
         (output_dir / "images").mkdir(parents=True, exist_ok=True)
         (output_dir / "labels").mkdir(parents=True, exist_ok=True)
@@ -247,6 +256,7 @@ class PipelineYOLO:
     # ÉTAPE 4 — Ajouter des backgrounds
     # ═══════════════════════════════════════════════════════════════
     def ajouter_backgrounds(self, images_src, images_annotees, output_dir, n_backgrounds=50):
+        print(f"\nAjout de backgrounds ({Path(output_dir).name}) ...")
         output_dir = Path(output_dir)
         tile_size = 1024
 
