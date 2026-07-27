@@ -84,11 +84,26 @@ else:
 # ═══════════════════════════════════════════════════════════════
 # CHARGEMENT DU MODÈLE
 # ═══════════════════════════════════════════════════════════════
+# Re-vérifier le device au moment du chargement du modèle
+# (important en environnement MIG où le nombre de GPUs peut changer)
+print(f"\n=== Vérification avant chargement du modèle ===")
+if torch.cuda.is_available():
+    num_gpus_now = torch.cuda.device_count()
+    print(f"  torch.cuda.device_count(): {num_gpus_now}")
+    if num_gpus_now == 1:
+        device_for_model = "0"
+    else:
+        device_for_model = ",".join(str(i) for i in range(num_gpus_now))
+    print(f"  Device pour inférence: {device_for_model}")
+else:
+    device_for_model = "cpu"
+    print(f"  Pas de GPU, utilisation CPU")
+
 detection_model = AutoDetectionModel.from_pretrained(
     model_type="ultralytics",
     model_path=BEST_MODEL,
     confidence_threshold=0.3,
-    device=device,
+    device=device_for_model,  # Utiliser le device re-vérifié
 )
 
 

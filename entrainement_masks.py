@@ -382,15 +382,28 @@ names: ["cuvette"]
             print(f"  → Batch size : {batch_size} (CPU)")
 
         print(f"\n=== DEBUG avant model.train() ===")
-        print(f"  self.device: {self.device}")
+        print(f"  self.device (initiale): {self.device}")
         print(f"  batch_size: {batch_size}")
+
+        # Re-vérifier le nombre de GPUs au moment du train (peut changer en MIG)
+        if torch.cuda.is_available():
+            num_gpus_now = torch.cuda.device_count()
+            print(f"  torch.cuda.device_count() (au moment du train): {num_gpus_now}")
+            if num_gpus_now == 1:
+                device_to_use = "0"
+            else:
+                device_to_use = ",".join(str(i) for i in range(num_gpus_now))
+            print(f"  → Device ajusté pour train: {device_to_use}")
+        else:
+            device_to_use = "cpu"
+            print(f"  → Pas de GPU au moment du train, utilisation CPU")
 
         model.train(
             data=str(self.YAML_PATH),
             epochs=100,
             imgsz=1024,
             batch=batch_size,
-            device=self.device,  # GPU détecté automatiquement
+            device=device_to_use,  # Utiliser le device re-vérifié
             workers=self.cpu_nb,
             augment=True,
             patience=30,
