@@ -8,7 +8,6 @@
 #SBATCH --mail-type=END,FAIL
 
 
-cd /gpfs/scratch/bonaime/git/segmentation_yolo
 hostname
 module purge
 
