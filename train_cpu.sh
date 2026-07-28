@@ -23,7 +23,6 @@ export NUMEXPR_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
 export OMP_NUM_THREADS=2
 
-exit
 echo ""
 echo "=== Démarrage de l'entraînement sur CPU ==="
 .venv/bin/python entrainement_masks.py
