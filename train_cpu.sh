@@ -2,7 +2,7 @@
 #SBATCH --job-name=yolo-train-cpu
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=32
-#SBATCH --partition=ncpu,ncpum,ncpumshort,ncpulong
+#SBATCH --partition=ncpu,ncpum,ncpulong
 #SBATCH --output=./logs/train-%j.txt
 #SBATCH --mail-user=bonaime@ipgp.fr
 #SBATCH --mail-type=END,FAIL

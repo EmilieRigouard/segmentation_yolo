@@ -2,7 +2,7 @@
 #SBATCH --job-name=yolo-inference-cpu
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=32
-#SBATCH --partition=ncpu,ncpum,ncpumshort,ncpulong
+#SBATCH --partition=ncpu,ncpum,ncpulong
 #SBATCH --output=./logs/infer-%j.txt
 #SBATCH --mail-user=bonaime@ipgp.fr
 #SBATCH --mail-type=END,FAIL
