@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=yolo-inference-cpu
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=32
+#SBATCH --ntasks-per-node=128
 #SBATCH --partition=ncpu,ncpum,ncpulong
 #SBATCH --output=./logs/infer-%j.txt
 #SBATCH --mail-user=bonaime@ipgp.fr
