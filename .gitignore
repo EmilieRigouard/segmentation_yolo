@@ -20,3 +20,4 @@ runs/
 .python-version
 training/estran/dataset_tuiles.yaml
 *logs/*.txt
+training_GPU/estran/dataset_tuiles.yaml

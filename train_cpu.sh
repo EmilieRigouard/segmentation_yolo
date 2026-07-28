@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=yolo-train-cpu
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=32
+#SBATCH --ntasks-per-node=128
 #SBATCH --partition=ncpu,ncpum,ncpulong
 #SBATCH --output=./logs/train-%j.txt
 #SBATCH --mail-user=bonaime@ipgp.fr
@@ -24,7 +24,7 @@ echo "Mémoire allouée : $SLURM_MEM_PER_NODE"
 # On garde donc un nombre de threads faible.
 export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export NUMEXPR_NUM_THREADS=$SLURM_CPUS_PER_TASK
-export OMP_NUM_THREADS=2
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
 echo ""
 echo "=== Démarrage de l'entraînement sur CPU ==="

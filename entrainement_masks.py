@@ -156,6 +156,18 @@ class PipelineYOLO:
 
         print(f"Using {self.cpu_nb=} CPU")
 
+        # Traitement CPU ou GPU selon le hostname
+        self.use_gpu = "gpu" in gethostname()
+        if self.use_gpu and not torch.cuda.is_available():
+            # torch.cuda.is_available() ne lève jamais d'exception : elle renvoie False
+            # si le driver NVIDIA est absent/trop ancien pour ce build de torch.
+            print(
+                "⚠️ Hostname GPU détecté mais CUDA indisponible "
+                "(driver NVIDIA trop ancien ou torch non compatible) → fallback CPU"
+            )
+            self.use_gpu = False
+        print(f"Using {self.use_gpu=} ({'GPU' if self.use_gpu else 'CPU'} sur {gethostname()})")
+
         # Enregistrer le temps de démarrage
         self.start_time = time.time()
         print(f"\n{'='*60}")
@@ -326,48 +338,91 @@ names: ["cuvette"]
         self.log_step("ÉTAPE 6 — Entraînement YOLO")
         model = YOLO("yolov8n-seg.pt")
 
-        # Initialiser les variables
-        device_to_use = "cpu"
+        if self.use_gpu:
+            # ═══════════════════════════════════════════════════════
+            # Configuration GPU
+            # ═══════════════════════════════════════════════════════
+            # torch.cuda.device_count() renvoie un décompte NVML (potentiellement
+            # gonflé, ex: instances MIG sur plusieurs GPU physiques) tant que CUDA
+            # n'est pas initialisé. On force l'init pour obtenir le nombre réel de
+            # devices utilisables par le runtime CUDA dans ce process.
+            torch.cuda.init()
+            n_gpu = torch.cuda.device_count()
+            gpu_name = torch.cuda.get_device_name(0) if n_gpu > 0 else "N/A"
+            device_to_use = ",".join(str(i) for i in range(n_gpu)) if n_gpu > 1 else 0
 
-        # Configuration adaptative en fonction du nombre de CPUs
-        print(f"  CPUs disponibles: {self.cpu_nb}")
+            print(f"  GPUs disponibles: {n_gpu} ({gpu_name})")
 
-        if self.cpu_nb >= 25:
-            # Configuration très agressive (25-32 CPUs)
-            batch_size = 48
-            workers_to_use = self.cpu_nb - 2
-            epochs = 40
-            patience = 8
-            close_mosaic = 3
-            lr0 = 0.015
-            print(f"  Mode: Très agressif (≥25 CPUs)")
-        elif self.cpu_nb >= 16:
-            # Configuration agressive (16-24 CPUs)
-            batch_size = 32
-            workers_to_use = self.cpu_nb - 2
-            epochs = 50
-            patience = 10
-            close_mosaic = 5
-            lr0 = 0.01
-            print(f"  Mode: Agressif (16-24 CPUs)")
-        elif self.cpu_nb >= 9:
-            # Configuration modérée (9-15 CPUs)
-            batch_size = 8
-            workers_to_use = self.cpu_nb - 1
-            epochs = 75
-            patience = 15
-            close_mosaic = 8
-            lr0 = 0.005
-            print(f"  Mode: Modéré (9-15 CPUs)")
-        else:
-            # Configuration conservatrice (4-8 CPUs)
-            batch_size = 4
-            workers_to_use = max(1, self.cpu_nb - 1)
+            if "MIG" in gpu_name:
+                # Instance MIG (ex: 1g.5gb) : fraction d'un A100, mémoire très limitée (~5GB).
+                # batch=8 a provoqué un OOM (mémoire quasi pleine + fragmentation) : on réduit
+                # avec une marge de sécurité.
+                batch_per_gpu = 4
+                print(f"  Mode: MIG slice (mémoire limitée)")
+            elif "A100" in gpu_name:
+                batch_per_gpu = 64
+                print(f"  Mode: A100")
+            elif "V100" in gpu_name:
+                batch_per_gpu = 32
+                print(f"  Mode: V100")
+            elif "4080" in gpu_name:
+                batch_per_gpu = 16
+                print(f"  Mode: RTX 4080")
+            else:
+                batch_per_gpu = 16
+                print(f"  Mode: GPU générique")
+
+            batch_size = batch_per_gpu * max(n_gpu, 1)
+            workers_to_use = min(self.cpu_nb, 8 * max(n_gpu, 1))
             epochs = 100
             patience = 20
             close_mosaic = 10
-            lr0 = 0.001
-            print(f"  Mode: Conservateur (4-8 CPUs)")
+            lr0 = 0.01
+            amp = True
+        else:
+            # ═══════════════════════════════════════════════════════
+            # Configuration CPU adaptative en fonction du nombre de CPUs
+            # ═══════════════════════════════════════════════════════
+            device_to_use = "cpu"
+            amp = False
+            print(f"  CPUs disponibles: {self.cpu_nb}")
+
+            if self.cpu_nb >= 25:
+                # Configuration très agressive (25-32 CPUs)
+                batch_size = 48
+                workers_to_use = self.cpu_nb - 2
+                epochs = 40
+                patience = 8
+                close_mosaic = 3
+                lr0 = 0.015
+                print(f"  Mode: Très agressif (≥25 CPUs)")
+            elif self.cpu_nb >= 16:
+                # Configuration agressive (16-24 CPUs)
+                batch_size = 32
+                workers_to_use = self.cpu_nb - 2
+                epochs = 50
+                patience = 10
+                close_mosaic = 5
+                lr0 = 0.01
+                print(f"  Mode: Agressif (16-24 CPUs)")
+            elif self.cpu_nb >= 9:
+                # Configuration modérée (9-15 CPUs)
+                batch_size = 8
+                workers_to_use = self.cpu_nb - 1
+                epochs = 75
+                patience = 15
+                close_mosaic = 8
+                lr0 = 0.005
+                print(f"  Mode: Modéré (9-15 CPUs)")
+            else:
+                # Configuration conservatrice (4-8 CPUs)
+                batch_size = 4
+                workers_to_use = max(1, self.cpu_nb - 1)
+                epochs = 100
+                patience = 20
+                close_mosaic = 10
+                lr0 = 0.001
+                print(f"  Mode: Conservateur (4-8 CPUs)")
 
         print(f"  → Batch size : {batch_size}")
         print(f"  → Workers : {workers_to_use}")
@@ -381,7 +436,7 @@ names: ["cuvette"]
         print(f"  Workers: {workers_to_use}")
         print(f"  Epochs: {epochs}")
 
-        # Paramètres d'entraînement adaptés au nombre de CPUs
+        # Paramètres d'entraînement adaptés au device (CPU ou GPU)
         train_args = {
             "data": str(self.YAML_PATH),
             "epochs": epochs,
@@ -395,7 +450,7 @@ names: ["cuvette"]
             "fraction": 1.0,
             "save_period": 5,
             "cache": "disk",  # Cache disk pour résultats déterministes
-            "amp": False,
+            "amp": amp,
             "plots": True,
             "rect": True,
             "lr0": lr0,
@@ -414,18 +469,23 @@ names: ["cuvette"]
         from sahi.predict import get_sliced_prediction
         from PIL import Image
 
+        # On recupère le meilleur modèle entraîné qui a le train-XX le plus grand
         BEST_MODEL = str(sorted(
             Path(os.getenv("TRAIN_DIR")).glob("train*/weights/best.pt")
         )[-1])
         print(f"\nModèle utilisé : {BEST_MODEL}")
 
+
         TEST_IMAGE = str(glob_images(self.IMAGES_SRC)[0])
+
+        device_for_inference = "cuda:0" if self.use_gpu else "cpu"
+        print(f"Device pour inférence : {device_for_inference}")
 
         detection_model = AutoDetectionModel.from_pretrained(
             model_type="ultralytics",
             model_path=BEST_MODEL,
             confidence_threshold=0.3,
-            device="cpu",
+            device=device_for_inference,
         )
 
         result = get_sliced_prediction(
