@@ -156,37 +156,13 @@ class PipelineYOLO:
 
         print(f"Using {self.cpu_nb=} CPU")
 
-        # Déterminer le device GPU
-        self.device = self._detect_device()
-        print(f"Device pour entraînement : {self.device}")
-
         # Enregistrer le temps de démarrage
         self.start_time = time.time()
         print(f"\n{'='*60}")
         print(f"Démarrage du pipeline à {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"{'='*60}")
 
-    def _detect_device(self):
-        """Détecte et retourne le device (GPU multi ou CPU)"""
-        print(f"\n=== DEBUG _detect_device ===")
-        print(f"  torch.cuda.is_available(): {torch.cuda.is_available()}")
-        print(f"  os.environ['CUDA_VISIBLE_DEVICES']: {os.environ.get('CUDA_VISIBLE_DEVICES', 'NOT SET')}")
 
-        if torch.cuda.is_available():
-            num_gpus = torch.cuda.device_count()
-            print(f"  torch.cuda.device_count(): {num_gpus}")
-
-            # Retourner tous les GPUs visibles
-            if num_gpus == 1:
-                device = "0"
-            else:
-                device = ",".join(str(i) for i in range(num_gpus))
-
-            print(f"  → Device retourné : {device}")
-            return device
-        else:
-            print(f"  → Pas de GPU, utilisation du CPU")
-            return "cpu"
 
     def log_step(self, step_name):
         """Affiche l'heure et le temps écoulé pour une étape"""
@@ -356,95 +332,51 @@ names: ["cuvette"]
         model = YOLO("yolov8n-seg.pt")
 
         # Initialiser les variables
-        gpu_memory_gb = 0
         batch_size = 4
-        use_fp16 = False
         device_to_use = "cpu"
 
-        # Déterminer le batch size optimal selon la mémoire GPU disponible
-        if torch.cuda.is_available():
-            try:
-                num_gpus = torch.cuda.device_count()
-                gpu_name = torch.cuda.get_device_name(0)
-                gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
-                print(f"  GPU: {gpu_name}, Memory: {gpu_memory_gb:.1f} GB")
+        # Configuration CPU
+        print(f"  CPUs disponibles: {self.cpu_nb}")
 
-                # Adapter le batch size à la mémoire disponible
-                if gpu_memory_gb > 35:  # A100 40GB
-                    batch_size = 64
-                    use_fp16 = True
-                elif gpu_memory_gb > 20:  # A100 80GB ou A6000 48GB
-                    batch_size = 48
-                    use_fp16 = True
-                elif gpu_memory_gb > 15:  # V100 32GB ou A6000
-                    batch_size = 32
-                    use_fp16 = True
-                elif gpu_memory_gb > 10:  # A10 24GB, RTX 4090
-                    batch_size = 16
-                    use_fp16 = True
-                elif gpu_memory_gb > 6:   # RTX 4080 16GB, MIG partitions 6-8GB
-                    batch_size = 8
-                    use_fp16 = False
-                elif gpu_memory_gb > 5:   # MIG partitions 5-6GB (comme votre cas)
-                    batch_size = 1
-                    use_fp16 = False
-                else:  # MIG 1g.5gb (5GB) - très serré
-                    batch_size = 2
-                    use_fp16 = False
-
-            except Exception as e:
-                print(f"⚠️ Erreur détection GPU: {e}")
-                print(f"  → Utilisation des valeurs par défaut")
-                gpu_memory_gb = 0
-                batch_size = 4
-                use_fp16 = False
-
-            print(f"  → Batch size : {batch_size} (GPU avec {gpu_memory_gb:.1f}GB)")
-            print(f"  → Mixed Precision : {'✗ Désactivé' if not use_fp16 else '✓ Activé'}")
-
-            # Déterminer le device
-            num_gpus_now = torch.cuda.device_count()
-            if num_gpus_now == 1:
-                device_to_use = "0"
-            else:
-                device_to_use = ",".join(str(i) for i in range(num_gpus_now))
-
+        # Adapter le batch size au nombre de CPUs disponibles
+        if self.cpu_nb >= 32:
+            batch_size = 16
+            workers_to_use = self.cpu_nb - 4  # Laisser quelques CPUs libres
+        elif self.cpu_nb >= 16:
+            batch_size = 8
+            workers_to_use = self.cpu_nb - 2
         else:
-            batch_size = 2
-            device_to_use = "cpu"
-            print(f"  → Batch size : {batch_size} (CPU)")
+            batch_size = 4
+            workers_to_use = max(1, self.cpu_nb - 1)
+
+        print(f"  → Batch size : {batch_size} (CPU avec {self.cpu_nb} CPUs)")
+        print(f"  → Workers : {workers_to_use}")
 
         print(f"\n=== Configuration YOLO ===")
-        print(f"  Mémoire GPU: {gpu_memory_gb:.1f} GB")
         print(f"  Batch size: {batch_size}")
         print(f"  Device: {device_to_use}")
+        print(f"  Workers: {workers_to_use}")
 
-        # Adapter les workers selon la mémoire disponible
-        # Mémoire très limitée: réduire workers
-        if gpu_memory_gb < 6:
-            workers_to_use = 0  # Pas de workers pour MIG serré
-            use_cache = False
-        else:
-            workers_to_use = 10
-            use_cache = True
+        # Pour CPU, garder cache activé pour performance
+        use_cache = True
 
-        # Paramètres d'entraînement adaptés à la mémoire GPU
-        # MIG 5.1GB - imgsz=1024 OBLIGATOIRE
+        # Paramètres d'entraînement optimisés pour CPU
         train_args = {
             "data": str(self.YAML_PATH),
-            "epochs": 30,  # Réduit drastiquement pour compenser imgsz=1024
-            "imgsz": 1024,  # GARDER 1024
+            "epochs": 100,  # Plus d'epochs pour CPU (temps n'est pas une contrainte majeure)
+            "imgsz": 1024,  # Réduire la taille pour CPU (moins de RAM)
             "batch": batch_size,
             "device": device_to_use,
             "workers": workers_to_use,
-            "augment": False,
-            "patience": 10,  # Très court: arrêt anticipé rapide
-            "close_mosaic": 3,
+            "augment": True,  # Augmentation pour améliorer la qualité du modèle
+            "patience": 30,  # Arrêt anticipé avec patience décente
+            "close_mosaic": 10,
             "fraction": 1.0,
             "save_period": 5,
-            "cache": False,
-            "amp": True,  # Réactiver pour économiser mémoire
-            "plots": False,
+            "flipud": 0.5,
+            "cache": use_cache,  # Utiliser le cache
+            "amp": False,  # Pas d'Automatic Mixed Precision sur CPU
+            "plots": True,  # Générer les graphiques
             "rect": True,  # Optimiser les dimensions de batch
         }
 

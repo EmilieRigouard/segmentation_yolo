@@ -1,0 +1,31 @@
+#!/bin/bash
+#SBATCH --job-name=yolo-train-cpu
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=32
+#SBATCH --partition=ncpum,
+#SBATCH --output=/gpfs/users/bonaime/logs/train-%j.txt
+#SBATCH --mail-user=bonaime@ipgp.fr
+#SBATCH --mail-type=END,FAIL
+
+
+cd /gpfs/scratch/bonaime/git/segmentation_yolo
+hostname
+module purge
+
+echo "=== Job lancé sur $(hostname) ==="
+echo "Date : $(date)"
+echo "CPUs alloués : $SLURM_CPUS_PER_TASK"
+echo "Mémoire allouée : $SLURM_MEM_PER_NODE"
+
+# Configuration CPU
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export NUMEXPR_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
+echo ""
+echo "=== Démarrage de l'entraînement sur CPU ==="
+.venv/bin/python entrainement_masks.py
+
+echo ""
+echo "=== Entraînement terminé ==="
+echo "Date : $(date)"

@@ -43,63 +43,24 @@ else:
 
 print(f"Using {cpu_nb=} CPU")
 
-# Déterminer le device (GPU ou CPU)
-if torch.cuda.is_available():
-    num_gpus = torch.cuda.device_count()
-    print(f"GPU(s) détecté(s) : {num_gpus}")
-    device = "0"  # SAHI utilise le GPU 0 pour l'inférence
+# Mode CPU uniquement
+print("Mode : CPU")
+device = "cpu"
 
-    # Adapter les paramètres d'inférence selon la GPU
-    # (sur cluster : A100 probable)
-    # Note : on peut pas lire le nom de la GPU de façon fiable sur cluster
-    # donc on utilise une heuristique : plus de 40GB = A100-like
-    try:
-        gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
-        print(f"Memory GPU disponible : {gpu_memory_gb:.1f} GB")
-        if gpu_memory_gb > 35:  # A100 40GB
-            slice_height = 2048
-            slice_width = 2048
-            overlap_ratio = 0.15
-        else:
-            slice_height = 1024
-            slice_width = 1024
-            overlap_ratio = 0.2
-    except:
-        # Fallback : utiliser les valeurs standard
-        print(f"Could not read GPU memory, using default slice parameters")
-        slice_height = 1024
-        slice_width = 1024
-        overlap_ratio = 0.2
+slice_height = 1024
+slice_width = 1024
+overlap_ratio = 0.2
 
-    print(f"Slices optimisées : {slice_height}x{slice_width}, overlap={overlap_ratio}")
-
-    # Réduire légèrement le parallélisme CPU quand on utilise GPU
-    cpu_nb = max(1, cpu_nb // 2)
-    print(f"Mode GPU : workers CPU réduits à {cpu_nb}")
-else:
-    print("Pas de GPU disponible, utilisation du CPU")
-    device = "cpu"
-    slice_height = 1024
-    slice_width = 1024
-    overlap_ratio = 0.2
+print(f"Slices optimisées pour CPU : {slice_height}x{slice_width}, overlap={overlap_ratio}")
+print(f"Workers CPU : {cpu_nb}")
 
 # ═══════════════════════════════════════════════════════════════
 # CHARGEMENT DU MODÈLE
 # ═══════════════════════════════════════════════════════════════
-# Re-vérifier le device au moment du chargement du modèle
-# (important en environnement MIG où le nombre de GPUs peut changer)
-print(f"\n=== Vérification avant chargement du modèle ===")
-if torch.cuda.is_available():
-    num_gpus_now = torch.cuda.device_count()
-    print(f"  torch.cuda.device_count(): {num_gpus_now}")
-    if num_gpus_now == 1:
-        device_for_model = "0"
-    else:
-        device_for_model = ",".join(str(i) for i in range(num_gpus_now))
-    print(f"  Device pour inférence: {device_for_model}")
-else:
-    device_for_model = "cpu"
-    print(f"  Pas de GPU, utilisation CPU")
+# Vérification avant chargement du modèle
+print(f"\n=== Configuration du modèle ===")
+device_for_model = "cpu"
+print(f"  Device pour inférence: {device_for_model}")
 
 detection_model = AutoDetectionModel.from_pretrained(
     model_type="ultralytics",
