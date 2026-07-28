@@ -44,11 +44,13 @@ else:
 print(f"Using {cpu_nb=} CPU")
 
 # Mode CPU uniquement
-print("Mode : CPU")
+print("\nMode : CPU")
 device = "cpu"
 
-slice_height = 1024
-slice_width = 1024
+# Adapter les paramètres de slicing pour CPU
+# Sur CPU, utiliser des slices plus petites pour limiter la mémoire
+slice_height = 512
+slice_width = 512
 overlap_ratio = 0.2
 
 print(f"Slices optimisées pour CPU : {slice_height}x{slice_width}, overlap={overlap_ratio}")

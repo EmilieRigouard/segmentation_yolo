@@ -1,10 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=yolo-inference-cpu
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
-#SBATCH --partition=cpu_long
-#SBATCH --output=/gpfs/users/bonaime/logs/inference-%j.txt
+#SBATCH --cpus-per-task=32
+#SBATCH --partition=ncpu,ncpum,ncpumshort,ncpulong
+#SBATCH --output=./logs/infer-%j.txt
 #SBATCH --mail-user=bonaime@ipgp.fr
 #SBATCH --mail-type=END,FAIL
 

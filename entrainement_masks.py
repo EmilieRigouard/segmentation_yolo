@@ -172,11 +172,6 @@ class PipelineYOLO:
         print(f"\n[{current_time}] [{elapsed_str}] {step_name}")
 
     # ═══════════════════════════════════════════════════════════════
-        print(f"Démarrage du pipeline à {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"{'='*60}")
-
-
-    # ═══════════════════════════════════════════════════════════════
     # ÉTAPE 1 — Convertir JSON COCO → labels YOLO segmentation
     # ═══════════════════════════════════════════════════════════════
     def convert_coco(self):
@@ -332,52 +327,80 @@ names: ["cuvette"]
         model = YOLO("yolov8n-seg.pt")
 
         # Initialiser les variables
-        batch_size = 4
         device_to_use = "cpu"
 
-        # Configuration CPU
+        # Configuration adaptative en fonction du nombre de CPUs
         print(f"  CPUs disponibles: {self.cpu_nb}")
 
-        # Adapter le batch size au nombre de CPUs disponibles
-        if self.cpu_nb >= 32:
-            batch_size = 16
-            workers_to_use = self.cpu_nb - 4  # Laisser quelques CPUs libres
-        elif self.cpu_nb >= 16:
-            batch_size = 8
+        if self.cpu_nb >= 25:
+            # Configuration très agressive (25-32 CPUs)
+            batch_size = 48
             workers_to_use = self.cpu_nb - 2
+            epochs = 40
+            patience = 8
+            close_mosaic = 3
+            lr0 = 0.015
+            print(f"  Mode: Très agressif (≥25 CPUs)")
+        elif self.cpu_nb >= 16:
+            # Configuration agressive (16-24 CPUs)
+            batch_size = 32
+            workers_to_use = self.cpu_nb - 2
+            epochs = 50
+            patience = 10
+            close_mosaic = 5
+            lr0 = 0.01
+            print(f"  Mode: Agressif (16-24 CPUs)")
+        elif self.cpu_nb >= 9:
+            # Configuration modérée (9-15 CPUs)
+            batch_size = 8
+            workers_to_use = self.cpu_nb - 1
+            epochs = 75
+            patience = 15
+            close_mosaic = 8
+            lr0 = 0.005
+            print(f"  Mode: Modéré (9-15 CPUs)")
         else:
+            # Configuration conservatrice (4-8 CPUs)
             batch_size = 4
             workers_to_use = max(1, self.cpu_nb - 1)
+            epochs = 100
+            patience = 20
+            close_mosaic = 10
+            lr0 = 0.001
+            print(f"  Mode: Conservateur (4-8 CPUs)")
 
-        print(f"  → Batch size : {batch_size} (CPU avec {self.cpu_nb} CPUs)")
+        print(f"  → Batch size : {batch_size}")
         print(f"  → Workers : {workers_to_use}")
+        print(f"  → Epochs : {epochs}")
+        print(f"  → Patience : {patience}")
+        print(f"  → Learning rate : {lr0}")
 
         print(f"\n=== Configuration YOLO ===")
         print(f"  Batch size: {batch_size}")
         print(f"  Device: {device_to_use}")
         print(f"  Workers: {workers_to_use}")
+        print(f"  Epochs: {epochs}")
 
-        # Pour CPU, garder cache activé pour performance
-        use_cache = True
-
-        # Paramètres d'entraînement optimisés pour CPU
+        # Paramètres d'entraînement adaptés au nombre de CPUs
         train_args = {
             "data": str(self.YAML_PATH),
-            "epochs": 100,  # Plus d'epochs pour CPU (temps n'est pas une contrainte majeure)
-            "imgsz": 1024,  # Réduire la taille pour CPU (moins de RAM)
+            "epochs": epochs,
+            "imgsz": 1024,
             "batch": batch_size,
             "device": device_to_use,
             "workers": workers_to_use,
-            "augment": True,  # Augmentation pour améliorer la qualité du modèle
-            "patience": 30,  # Arrêt anticipé avec patience décente
-            "close_mosaic": 10,
+            "augment": True,
+            "patience": patience,
+            "close_mosaic": close_mosaic,
             "fraction": 1.0,
             "save_period": 5,
+            "cache": "disk",  # Cache disk pour résultats déterministes
+            "amp": False,
+            "plots": True,
+            "rect": True,
+            "lr0": lr0,
+            "degrees": 180.0,
             "flipud": 0.5,
-            "cache": use_cache,  # Utiliser le cache
-            "amp": False,  # Pas d'Automatic Mixed Precision sur CPU
-            "plots": True,  # Générer les graphiques
-            "rect": True,  # Optimiser les dimensions de batch
         }
 
         model.train(**train_args)
