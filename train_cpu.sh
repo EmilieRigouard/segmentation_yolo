@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=yolo-train-cpu
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=128
+#SBATCH --ntasks-per-node=32
 #SBATCH --partition=ncpu,ncpum,ncpulong
 #SBATCH --output=./logs/train-%j.txt
 #SBATCH --mail-user=bonaime@ipgp.fr
@@ -17,13 +17,14 @@ echo "CPUs alloués : $SLURM_CPUS_PER_TASK"
 echo "Mémoire allouée : $SLURM_MEM_PER_NODE"
 
 # Configuration CPU
-# Le process principal (forward/backward PyTorch) doit pouvoir utiliser
-# tous les CPUs alloués. Les workers du DataLoader se limitent déjà
-# automatiquement à 1 thread chacun (comportement PyTorch par défaut),
-# donc pas de risque de sur-souscription en augmentant OMP_NUM_THREADS.
+# yolov8n-seg est un petit modèle : au-delà de quelques threads, le calcul
+# CPU (intra-op OpenMP/MKL) est dominé par l'overhead de synchronisation,
+# pas par le calcul lui-même. Plus de threads = plus lent (mesuré : 2
+# threads ~1h48/epoch, 32 threads ~2h05/epoch, 128 threads ~3h55/epoch).
+# On garde donc un nombre de threads faible.
 export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export NUMEXPR_NUM_THREADS=$SLURM_CPUS_PER_TASK
-export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export OMP_NUM_THREADS=2
 
 echo ""
 echo "=== Démarrage de l'entraînement sur CPU ==="

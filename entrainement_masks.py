@@ -156,13 +156,6 @@ class PipelineYOLO:
 
         print(f"Using {self.cpu_nb=} CPU")
 
-        # Forcer PyTorch à utiliser tous les CPUs alloués pour le calcul
-        # (indépendamment de OMP_NUM_THREADS, au cas où il ne serait pas
-        # correctement propagé). Les workers du DataLoader se limitent
-        # automatiquement à 1 thread chacun, donc pas de sur-souscription.
-        torch.set_num_threads(self.cpu_nb)
-        print(f"torch.set_num_threads({self.cpu_nb})")
-
         # Enregistrer le temps de démarrage
         self.start_time = time.time()
         print(f"\n{'='*60}")
