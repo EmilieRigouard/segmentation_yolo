@@ -121,6 +121,9 @@ class PipelineYOLO:
         self.TUILES_DIR  = Path(os.getenv("TUILES_DIR"))
         self.YAML_PATH   = Path(os.getenv("YAML_PATH"))
 
+        self.start_date = datetime.now().strftime('%d_%m_%y_%H_%M')
+        self.epochs = None
+
         # Vérifier que les chemins source existent
         if not self.IMAGES_SRC.exists():
             print(f"❌ ERREUR: IMAGES_SRC n'existe pas: {self.IMAGES_SRC}")
@@ -337,7 +340,6 @@ names: ["cuvette"]
     def train(self):
         self.log_step("ÉTAPE 6 — Entraînement YOLO")
         model = YOLO("yolov8n-seg.pt")
-
         if self.use_gpu:
             # ═══════════════════════════════════════════════════════
             # Configuration GPU
@@ -439,6 +441,8 @@ names: ["cuvette"]
         # Paramètres d'entraînement adaptés au device (CPU ou GPU)
         train_args = {
             "data": str(self.YAML_PATH),
+            "project": os.getenv("RESULTS_DIR")",
+            "name": f"{os.getenv('NAME_training')}_{self.start_date}",
             "epochs": epochs,
             "imgsz": 1024,
             "batch": batch_size,
@@ -470,9 +474,8 @@ names: ["cuvette"]
         from PIL import Image
 
         # On recupère le meilleur modèle entraîné qui a le train-XX le plus grand
-        BEST_MODEL = str(sorted(
-            Path(os.getenv("TRAIN_DIR")).glob("train*/weights/best.pt")
-        )[-1])
+        BEST_MODEL = str(sorted((Path(os.getenv("RESULTS_DIR")) / f"{os.getenv('NAME_training')}_{self.start_date}").glob("train*/weights/best.pt"))[-1])
+
         print(f"\nModèle utilisé : {BEST_MODEL}")
 
 
